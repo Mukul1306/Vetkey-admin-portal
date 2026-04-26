@@ -32,10 +32,23 @@ const Employee = mongoose.model("Employee", {
   age: Number,
   gender: String,
   empId: String,
+  lastDistributionDate: {
+  type: Date,
+  default: null
+},
   password: String,
   status: { type: String, default: "active" },
   image: String
 });
+
+const Client = mongoose.model("Client", {
+  name: String,
+  mobile: String,
+  location: String,
+  employeeId: String,
+  employeeName: String
+});
+
 
 // 💊 PRODUCT MODEL (NEW)
 const Product = mongoose.model("Product", {
@@ -74,9 +87,36 @@ const Distribution = mongoose.model("Distribution", {
   date: { type: Date, default: Date.now }
 });
 
+
+
+const MonthlySale = mongoose.model("MonthlySale", {
+  employeeId: String,
+  employeeName: String,
+
+  clientId: String,     // ✅ NEW
+  clientName: String,   // ✅ NEW
+
+  month: String,
+  year: String,
+
+  products: [
+    {
+      productId: String,
+      name: String,
+      quantity: Number,
+      price: Number,
+      total: Number
+    }
+  ],
+
+  grandTotal: Number,
+  date: { type: Date, default: Date.now }
+});
+
+
 // ================= ADMIN LOGIN =================
-const ADMIN_ID = "admin";
-const ADMIN_PASS = "12345";
+const ADMIN_ID = "vke0010";
+const ADMIN_PASS = "RKSmsd120120@";
 
 // ================= LOGIN =================
 app.post("/login", async (req, res) => {
@@ -199,6 +239,10 @@ app.post("/distribute", async (req, res) => {
   try {
     const emp = await Employee.findById(req.body.employeeId);
 
+    if (!emp) {
+      return res.status(404).json({ msg: "Employee not found" });
+    }
+
     const cleanedProducts = req.body.products.map(p => ({
       ...p,
       quantity: Number(p.quantity)
@@ -206,14 +250,22 @@ app.post("/distribute", async (req, res) => {
 
     const data = new Distribution({
       ...req.body,
-      employeeName: emp.name,   // ✅ ADD THIS
+      employeeName: emp.name,
       products: cleanedProducts
     });
 
     await data.save();
+
+    // 🔥 IMPORTANT: UPDATE LAST ACTIVITY
+    await Employee.findByIdAndUpdate(req.body.employeeId, {
+      lastDistributionDate: new Date(),
+      status: "active" // auto activate if previously suspended
+    });
+
     res.json(data);
 
   } catch (err) {
+    console.log("DISTRIBUTE ERROR:", err);
     res.status(500).json({ msg: "Error distributing" });
   }
 });
@@ -298,7 +350,158 @@ app.put("/employee/:id", upload.single("image"), async (req, res) => {
 });
 
 
+app.post("/monthly-sale", async (req, res) => {
+  try {
+    const {
+      employeeId,
+      employeeName,
+      clientId,
+      clientName,
+      month,
+      year,
+      products
+    } = req.body;
+
+    let grandTotal = 0;
+
+    const updatedProducts = products.map(p => {
+      const total = Number(p.quantity) * Number(p.price);
+      grandTotal += total;
+
+      return {
+        ...p,
+        quantity: Number(p.quantity),
+        price: Number(p.price),
+        total
+      };
+    });
+
+    const sale = new MonthlySale({
+      employeeId,
+      employeeName,
+      clientId,     // ✅ added
+      clientName,   // ✅ added
+      month,
+      year,
+      products: updatedProducts,
+      grandTotal
+    });
+
+    await sale.save();
+
+    res.json({ msg: "Sale saved", sale });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ msg: "Error saving sale" });
+  }
+});
+
+app.get("/monthly-sales", async (req, res) => {
+  const data = await MonthlySale.find();
+  res.json(data);
+});
+
+app.post("/client", async (req, res) => {
+  const client = new Client(req.body);
+  await client.save();
+  res.json(client);
+});
+
+app.get("/clients", async (req, res) => {
+  const data = await Client.find();
+  res.json(data);
+});
 
 
+app.put("/distribution/:id", async (req, res) => {
+  try {
+    const updated = await Distribution.findByIdAndUpdate(
+      req.params.id,
+      {
+        doctorName: req.body.doctorName,
+        location: req.body.location,
+        mobile: req.body.mobile,
+      products: req.body.products.map(p => ({
+  ...p,
+  quantity: Number(p.quantity)
+}))
+      },
+      { new: true }
+    );
+
+    res.json(updated);
+
+  } catch (err) {
+    console.log("UPDATE ERROR:", err);
+    res.status(500).json({ msg: "Error updating distribution" });
+  }
+});
+
+app.get("/distribution/:employeeId", async (req, res) => {
+  try {
+    const data = await Distribution.find({
+      employeeId: req.params.employeeId
+    }).sort({ date: -1 }); // latest first
+
+    res.json(data);
+  } catch (err) {
+    console.log("FETCH ERROR:", err);
+    res.status(500).json({ msg: "Error fetching distribution" });
+  }
+});
+
+
+app.get("/distribution-filter/:employeeId", async (req, res) => {
+  const { start, end } = req.query;
+
+  const data = await Distribution.find({
+    employeeId: req.params.employeeId,
+    date: {
+      $gte: new Date(start),
+      $lte: new Date(end)
+    }
+  });
+
+  res.json(data);
+});
+app.get("/clients/:employeeId", async (req, res) => {
+  try {
+    const data = await Client.find({
+      employeeId: req.params.employeeId
+    });
+
+    res.json(data);
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ msg: "Error fetching clients" });
+  }
+});
+
+const cron = require("node-cron");
+
+// ⏰ run every hour
+cron.schedule("0 * * * *", async () => {
+  console.log("Checking employees for inactivity...");
+
+  const employees = await Employee.find();
+  const now = new Date();
+
+  for (let emp of employees) {
+    if (!emp.lastDistributionDate) continue;
+
+    const diffHours =
+      (now - new Date(emp.lastDistributionDate)) / (1000 * 60 * 60);
+
+    if (diffHours > 72 && emp.status !== "suspended") {
+      await Employee.findByIdAndUpdate(emp._id, {
+        status: "suspended"
+      });
+
+      console.log(`Suspended: ${emp.name}`);
+    }
+  }
+});
 // ================= SERVER =================
 app.listen(5000, () => console.log("Server running on 5000"));
