@@ -138,29 +138,37 @@ const ADMIN_PASS = "RKSmsd120120@";
 
 // ================= LOGIN =================
 app.post("/login", async (req, res) => {
-  const { empId, password } = req.body;
+  try {
+    const { empId, password } = req.body;
 
-  if (empId === ADMIN_ID && password === ADMIN_PASS) {
-    return res.json({ role: "admin" });
+    // ✅ ADMIN LOGIN
+    if (empId === "vke0010" && password === "RKSmsd120120@") {
+      return res.json({ role: "admin" });
+    }
+
+    // ✅ EMPLOYEE LOGIN
+    const user = await Employee.findOne({ empId, password });
+
+    if (!user) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+
+    if (user.status === "blocked") {
+      return res.status(403).json({ msg: "User Blocked" });
+    }
+
+    if (user.status === "suspended") {
+      return res.status(403).json({
+        msg: "Your account is suspended"
+      });
+    }
+
+    res.json({ role: "employee", user });
+
+  } catch (err) {
+    console.log("LOGIN ERROR:", err);
+    res.status(500).json({ msg: "Server error in login" });
   }
-
-  const user = await Employee.findOne({ empId, password });
-
-  if (!user) {
-    return res.status(400).json({ msg: "Invalid credentials" });
-  }
-
-  if (user.status === "blocked") {
-    return res.status(403).json({ msg: "User Blocked" });
-  }
-
-  if (user.status === "suspended") {
-    return res.status(403).json({
-      msg: "Your account is suspended. Please contact Mr. Rakesh Kumar Sharma."
-    });
-  }
-
-  res.json({ role: "employee", user });
 });
 
 // ================= ADD EMPLOYEE =================
