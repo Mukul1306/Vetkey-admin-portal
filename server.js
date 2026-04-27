@@ -197,10 +197,18 @@ app.post("/add-employee", upload.single("image"), async (req, res) => {
     console.log("BODY:", req.body);
     console.log("FILE:", req.file);
 
-    let imageUrl = "";
+    let imageUrl = ""; // ✅ declare ONLY ONCE
 
-    // ✅ SAFE CLOUDINARY
-   let imageUrl = "";
+    if (req.file) {
+      try {
+        const result = await cloudinary.uploader.upload(req.file.path);
+        imageUrl = result.secure_url;
+
+        fs.unlinkSync(req.file.path);
+      } catch (err) {
+        console.log("CLOUDINARY ERROR:", err);
+      }
+    }
 
     const emp = new Employee({
       ...req.body,
