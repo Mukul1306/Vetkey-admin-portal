@@ -194,19 +194,17 @@ app.post("/login", async (req, res) => {
 // ================= ADD EMPLOYEE =================
 app.post("/add-employee", upload.single("image"), async (req, res) => {
   try {
+    console.log("BODY:", req.body);
+    console.log("FILE:", req.file);
+
     let imageUrl = "";
 
-    // ✅ safe upload
-    if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path);
-      imageUrl = result.secure_url;
-
-      fs.unlinkSync(req.file.path);
-    }
+    // ✅ SAFE CLOUDINARY
+   let imageUrl = "";
 
     const emp = new Employee({
       ...req.body,
-      age: Number(req.body.age), // ✅ FIX
+      age: req.body.age ? Number(req.body.age) : undefined,
       image: imageUrl
     });
 
@@ -215,7 +213,7 @@ app.post("/add-employee", upload.single("image"), async (req, res) => {
     res.json(emp);
 
   } catch (err) {
-    console.log("UPLOAD ERROR:", err);
+    console.log("ADD EMPLOYEE ERROR:", err);
     res.status(500).json({ msg: "Error saving employee" });
   }
 });
