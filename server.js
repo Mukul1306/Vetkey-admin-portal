@@ -1,13 +1,31 @@
 require("dotenv").config();
 
-const express = require("express");
+const express = require("express");   // ✅ first
+const app = express();               // ✅ then create app
+
 const mongoose = require("mongoose");
 const cors = require("cors");
 const multer = require("multer");
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const cloudinary = require("cloudinary").v2;
+const fs = require("fs");
+
+// ✅ Cloudinary config
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_API_KEY,
+  api_secret: process.env.CLOUD_API_SECRET
+});
+
+// ✅ middleware
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://vetkeyadminportal.netlify.app"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 
 // ================= DB =================
 mongoose.connect(process.env.MONGO_URI)
@@ -147,14 +165,31 @@ app.post("/login", async (req, res) => {
 
 // ================= ADD EMPLOYEE =================
 app.post("/add-employee", upload.single("image"), async (req, res) => {
-  const emp = new Employee({
-    ...req.body,
-    image: req.file ? req.file.filename : ""
-  });
-  await emp.save();
-  res.json(emp);
-});
+  try {
+    let imageUrl = "";
 
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(req.file.path);
+      imageUrl = result.secure_url;
+
+      // 🧹 delete local file
+      fs.unlinkSync(req.file.path);
+    }
+
+    const emp = new Employee({
+      ...req.body,
+      image: imageUrl
+    });
+
+    await emp.save();
+
+    res.json(emp);
+
+  } catch (err) {
+    console.log("UPLOAD ERROR:", err);
+    res.status(500).json({ msg: "Error saving employee" });
+  }
+});
 // ================= GET EMPLOYEES =================
 app.get("/employees", async (req, res) => {
   const data = await Employee.find();
@@ -322,9 +357,12 @@ app.put("/employee/:id", upload.single("image"), async (req, res) => {
     }
 
     // ✅ image
-    if (req.file) {
-      updateData.image = req.file.filename;
-    }
+   if (req.file) {
+  const result = await cloudinary.uploader.upload(req.file.path);
+  updateData.image = result.secure_url;
+
+  fs.unlinkSync(req.file.path);
+}
 
     // ❌ remove empty password
     if (!updateData.password) {
@@ -362,16 +400,29 @@ app.post("/monthly-sale", async (req, res) => {
       products
     } = req.body;
 
+    // ✅ VALIDATION
+    if (!employeeId || !clientId || !month || !year) {
+      return res.status(400).json({ msg: "Missing required fields" });
+    }
+
+    if (!products || products.length === 0) {
+      return res.status(400).json({ msg: "No products added" });
+    }
+
     let grandTotal = 0;
 
     const updatedProducts = products.map(p => {
-      const total = Number(p.quantity) * Number(p.price);
+      const qty = Number(p.quantity);
+      const price = Number(p.price);
+
+      const total = qty * price;
       grandTotal += total;
 
       return {
-        ...p,
-        quantity: Number(p.quantity),
-        price: Number(p.price),
+        productId: p.productId,
+        name: p.name,
+        quantity: qty,
+        price: price,
         total
       };
     });
@@ -379,8 +430,8 @@ app.post("/monthly-sale", async (req, res) => {
     const sale = new MonthlySale({
       employeeId,
       employeeName,
-      clientId,     // ✅ added
-      clientName,   // ✅ added
+      clientId,
+      clientName,
       month,
       year,
       products: updatedProducts,
@@ -389,10 +440,10 @@ app.post("/monthly-sale", async (req, res) => {
 
     await sale.save();
 
-    res.json({ msg: "Sale saved", sale });
+    res.json({ msg: "Sale saved successfully", sale });
 
   } catch (err) {
-    console.log(err);
+    console.log("SALE ERROR:", err);
     res.status(500).json({ msg: "Error saving sale" });
   }
 });
@@ -413,6 +464,24 @@ app.get("/clients", async (req, res) => {
   res.json(data);
 });
 
+app.get("/monthly-sales/filter", async (req, res) => {
+  try {
+    const { employeeId, month, year } = req.query;
+
+    const filter = {};
+
+    if (employeeId) filter.employeeId = employeeId;
+    if (month) filter.month = month;
+    if (year) filter.year = year;
+
+    const data = await MonthlySale.find(filter);
+
+    res.json(data);
+
+  } catch (err) {
+    res.status(500).json({ msg: "Error fetching filtered sales" });
+  }
+});
 
 app.put("/distribution/:id", async (req, res) => {
   try {
