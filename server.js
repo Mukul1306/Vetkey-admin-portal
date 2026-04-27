@@ -34,10 +34,9 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.log(err));
 
 // ================= IMAGE UPLOAD =================
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
-});
+const multer = require("multer");
+
+const storage = multer.memoryStorage(); // ✅ store in memory
 const upload = multer({ storage });
 
 app.use("/uploads", express.static("uploads"));
@@ -192,19 +191,33 @@ app.post("/login", async (req, res) => {
   }
 });
 // ================= ADD EMPLOYEE =================
+const streamifier = require("streamifier");
+
 app.post("/add-employee", upload.single("image"), async (req, res) => {
   try {
     console.log("BODY:", req.body);
     console.log("FILE:", req.file);
 
-    let imageUrl = ""; // ✅ declare ONLY ONCE
+    let imageUrl = "";
 
     if (req.file) {
       try {
-        const result = await cloudinary.uploader.upload(req.file.path);
+        const streamUpload = () => {
+          return new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              { folder: "employees" },
+              (error, result) => {
+                if (result) resolve(result);
+                else reject(error);
+              }
+            );
+            streamifier.createReadStream(req.file.buffer).pipe(stream);
+          });
+        };
+
+        const result = await streamUpload();
         imageUrl = result.secure_url;
 
-        fs.unlinkSync(req.file.path);
       } catch (err) {
         console.log("CLOUDINARY ERROR:", err);
       }
