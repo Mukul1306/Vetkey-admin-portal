@@ -6,7 +6,6 @@ app.use(express.json());                // ✅ IMPORTANT
 app.use(express.urlencoded({ extended: true })); // ✅ IMPORTANT
 const mongoose = require("mongoose");
 const cors = require("cors");
-const multer = require("multer");
 
 const cloudinary = require("cloudinary").v2;
 const fs = require("fs");
