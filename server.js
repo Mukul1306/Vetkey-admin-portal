@@ -52,9 +52,10 @@ const Employee = mongoose.model("Employee", {
   empId: String,
   lastDistributionDate: {
   type: Date,
-    role: { type: String, default: "employee" }, // ✅ ADD THIS  default: null
+  default: null
 },
   password: String,
+   role: { type: String, default: "employee" }, // ✅ FIXED
   status: { type: String, default: "active" },
   image: String
 });
@@ -140,6 +141,15 @@ app.post("/login", async (req, res) => {
   try {
     const { empId, password } = req.body;
 
+    // ✅ STATIC ADMIN LOGIN
+    if (empId === "vke0010" && password === "RKSmsd120120@") {
+      return res.json({
+        role: "admin",
+        user: { name: "Admin" }
+      });
+    }
+
+    // 👨‍💼 EMPLOYEE LOGIN
     const user = await Employee.findOne({ empId });
 
     if (!user) {
@@ -155,14 +165,11 @@ app.post("/login", async (req, res) => {
     }
 
     if (user.status === "suspended") {
-      return res.status(403).json({
-        msg: "Account suspended"
-      });
+      return res.status(403).json({ msg: "Account suspended" });
     }
 
-    // ✅ ROLE BASED LOGIN
     res.json({
-      role: user.role,
+      role: "employee",
       user
     });
 
@@ -171,22 +178,22 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
-
 // ================= ADD EMPLOYEE =================
 app.post("/add-employee", upload.single("image"), async (req, res) => {
   try {
     let imageUrl = "";
 
+    // ✅ safe upload
     if (req.file) {
       const result = await cloudinary.uploader.upload(req.file.path);
       imageUrl = result.secure_url;
 
-      // 🧹 delete local file
       fs.unlinkSync(req.file.path);
     }
 
     const emp = new Employee({
       ...req.body,
+      age: Number(req.body.age), // ✅ FIX
       image: imageUrl
     });
 
