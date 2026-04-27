@@ -2,7 +2,8 @@ require("dotenv").config();
 
 const express = require("express");   // ✅ first
 const app = express();               // ✅ then create app
-
+app.use(express.json());                // ✅ IMPORTANT
+app.use(express.urlencoded({ extended: true })); // ✅ IMPORTANT
 const mongoose = require("mongoose");
 const cors = require("cors");
 const multer = require("multer");
@@ -139,9 +140,21 @@ const MonthlySale = mongoose.model("MonthlySale", {
 // ================= LOGIN =================
 app.post("/login", async (req, res) => {
   try {
+    console.log("BODY:", req.body); // 🔥 debug
+
+    // ✅ check if body exists
+    if (!req.body) {
+      return res.status(400).json({ msg: "No data received" });
+    }
+
     const { empId, password } = req.body;
 
-    // ✅ STATIC ADMIN LOGIN
+    // ✅ validate fields
+    if (!empId || !password) {
+      return res.status(400).json({ msg: "Missing empId or password" });
+    }
+
+    // 🔥 STATIC ADMIN LOGIN
     if (empId === "vke0010" && password === "RKSmsd120120@") {
       return res.json({
         role: "admin",
@@ -149,7 +162,7 @@ app.post("/login", async (req, res) => {
       });
     }
 
-    // 👨‍💼 EMPLOYEE LOGIN
+    // 👨‍💼 EMPLOYEE LOGIN (MongoDB)
     const user = await Employee.findOne({ empId });
 
     if (!user) {
@@ -168,7 +181,7 @@ app.post("/login", async (req, res) => {
       return res.status(403).json({ msg: "Account suspended" });
     }
 
-    res.json({
+    return res.json({
       role: "employee",
       user
     });
