@@ -52,7 +52,7 @@ const Employee = mongoose.model("Employee", {
   empId: String,
   lastDistributionDate: {
   type: Date,
-  default: null
+    role: { type: String, default: "employee" }, // ✅ ADD THIS  default: null
 },
   password: String,
   status: { type: String, default: "active" },
@@ -133,24 +133,21 @@ const MonthlySale = mongoose.model("MonthlySale", {
 
 
 // ================= ADMIN LOGIN =================
-const ADMIN_ID = "vke0010";
-const ADMIN_PASS = "RKSmsd120120@";
+
 
 // ================= LOGIN =================
 app.post("/login", async (req, res) => {
   try {
     const { empId, password } = req.body;
 
-    // ✅ ADMIN LOGIN
-    if (empId === "vke0010" && password === "RKSmsd120120@") {
-      return res.json({ role: "admin" });
-    }
-
-    // ✅ EMPLOYEE LOGIN
-    const user = await Employee.findOne({ empId, password });
+    const user = await Employee.findOne({ empId });
 
     if (!user) {
-      return res.status(400).json({ msg: "Invalid credentials" });
+      return res.status(400).json({ msg: "Invalid ID" });
+    }
+
+    if (user.password !== password) {
+      return res.status(400).json({ msg: "Invalid Password" });
     }
 
     if (user.status === "blocked") {
@@ -159,15 +156,19 @@ app.post("/login", async (req, res) => {
 
     if (user.status === "suspended") {
       return res.status(403).json({
-        msg: "Your account is suspended"
+        msg: "Account suspended"
       });
     }
 
-    res.json({ role: "employee", user });
+    // ✅ ROLE BASED LOGIN
+    res.json({
+      role: user.role,
+      user
+    });
 
   } catch (err) {
     console.log("LOGIN ERROR:", err);
-    res.status(500).json({ msg: "Server error in login" });
+    res.status(500).json({ msg: "Server error" });
   }
 });
 
