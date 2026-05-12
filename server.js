@@ -35,7 +35,21 @@ mongoose.connect(process.env.MONGO_URI)
 const multer = require("multer");
 
 const storage = multer.memoryStorage(); // ✅ store in memory
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/jpg"];
+
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPG, JPEG, PNG allowed"));
+    }
+  }
+});
 
 app.use("/uploads", express.static("uploads"));
 
@@ -193,49 +207,61 @@ const streamifier = require("streamifier");
 
 app.post("/add-employee", upload.single("image"), async (req, res) => {
   try {
+    console.log("========= ADD EMPLOYEE =========");
     console.log("BODY:", req.body);
     console.log("FILE:", req.file);
 
-    let imageUrl = "";
-
-    if (req.file) {
-      try {
-        const streamUpload = () => {
-          return new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-              { folder: "employees" },
-              (error, result) => {
-                if (result) resolve(result);
-                else reject(error);
-              }
-            );
-            streamifier.createReadStream(req.file.buffer).pipe(stream);
-          });
-        };
-
-        const result = await streamUpload();
-        imageUrl = result.secure_url;
-
-      } catch (err) {
-        console.log("CLOUDINARY ERROR:", err);
-      }
+    // ✅ check file received
+    if (!req.file) {
+      return res.status(400).json({
+        msg: "No image file received"
+      });
     }
+
+    // ✅ upload test
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "employees" },
+        (error, result) => {
+          if (error) {
+            console.log("CLOUDINARY REAL ERROR:", error);
+            reject(error);
+          } else {
+            resolve(result);
+          }
+        }
+      );
+
+      streamifier
+        .createReadStream(req.file.buffer)
+        .pipe(stream);
+    });
+
+    console.log("UPLOAD SUCCESS:", result.secure_url);
 
     const emp = new Employee({
       ...req.body,
-      age: req.body.age ? Number(req.body.age) : undefined,
-      image: imageUrl
+      age: Number(req.body.age),
+      image: result.secure_url
     });
 
     await emp.save();
 
-    res.json(emp);
+    return res.json({
+      msg: "Employee added",
+      emp
+    });
 
   } catch (err) {
-    console.log("ADD EMPLOYEE ERROR:", err);
-    res.status(500).json({ msg: "Error saving employee" });
+    console.log("FINAL ERROR:", err);
+
+    return res.status(500).json({
+      msg: err.message || "Upload failed"
+    });
   }
 });
+
+
 // ================= GET EMPLOYEES =================
 app.get("/employees", async (req, res) => {
   const data = await Employee.find();
