@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 const express = require("express");   // ✅ first
 const app = express();               // ✅ then create app
 app.use(express.json());                // ✅ IMPORTANT
@@ -404,11 +403,23 @@ app.put("/employee/:id", upload.single("image"), async (req, res) => {
     }
 
     // ✅ image
-   if (req.file) {
-  const result = await cloudinary.uploader.upload(req.file.path);
-  updateData.image = result.secure_url;
+if (req.file) {
+  const streamUpload = () => {
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "employees" },
+        (error, result) => {
+          if (result) resolve(result);
+          else reject(error);
+        }
+      );
 
-  fs.unlinkSync(req.file.path);
+      streamifier.createReadStream(req.file.buffer).pipe(stream);
+    });
+  };
+
+  const result = await streamUpload();
+  updateData.image = result.secure_url;
 }
 
     // ❌ remove empty password
