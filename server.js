@@ -197,7 +197,8 @@ app.post("/login", async (req, res) => {
 // ================= ADD EMPLOYEE =================
 const streamifier = require("streamifier");
 
-app.post("/add-employee", upload.single("image"), async (req, res) => {
+app.post("/add-employee", upload.any(), async (req, res) => {
+  console.log(req.files);
   try {
     console.log("========= ADD EMPLOYEE =========");
     console.log("BODY:", req.body);
