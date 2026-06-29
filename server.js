@@ -196,46 +196,34 @@ const streamifier = require("streamifier");
 
 app.post("/add-employee", upload.single("image"), async (req, res) => {
   try {
-    console.log("========= ADD EMPLOYEE =========");
     console.log("BODY:", req.body);
-    console.log("FILES:", req.files);
+    console.log("FILE:", req.file);
 
-    if (!req.files || req.files.length === 0) {
+    if (!req.file) {
       return res.status(400).json({
         msg: "No image file received"
       });
     }
 
-    const file = req.files[0];
-
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         { folder: "employees" },
         (error, result) => {
-          if (error) {
-            console.log("CLOUDINARY ERROR:", error);
-            reject(error);
-          } else {
-            resolve(result);
-          }
+          if (error) return reject(error);
+          resolve(result);
         }
       );
 
-      streamifier
-        .createReadStream(file.buffer)
-        .pipe(stream);
+      streamifier.createReadStream(req.file.buffer).pipe(stream);
     });
 
-const emp = new Employee({
-  ...req.body,
-  image: result.secure_url
-});
+    const emp = new Employee({
+      ...req.body,
+      age: req.body.age ? Number(req.body.age) : undefined,
+      image: result.secure_url,
+    });
 
-if (req.body.age) {
-  emp.age = Number(req.body.age);
-}
-
-await emp.save();
+    await emp.save();
 
     res.json({
       msg: "Employee added successfully",
@@ -243,7 +231,7 @@ await emp.save();
     });
 
   } catch (err) {
-    console.log("FINAL ERROR:", err);
+    console.log(err);
     res.status(500).json({
       msg: err.message,
     });
