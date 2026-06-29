@@ -194,7 +194,7 @@ app.post("/login", async (req, res) => {
 // ================= ADD EMPLOYEE =================
 const streamifier = require("streamifier");
 
-app.post("/add-employee", upload.any(), async (req, res) => {
+app.post("/add-employee", upload.single("image"), async (req, res) => {
   try {
     console.log("========= ADD EMPLOYEE =========");
     console.log("BODY:", req.body);
@@ -226,13 +226,16 @@ app.post("/add-employee", upload.any(), async (req, res) => {
         .pipe(stream);
     });
 
-    const emp = new Employee({
-      ...req.body,
-      age: Number(req.body.age),
-      image: result.secure_url,
-    });
+const emp = new Employee({
+  ...req.body,
+  image: result.secure_url
+});
 
-    await emp.save();
+if (req.body.age) {
+  emp.age = Number(req.body.age);
+}
+
+await emp.save();
 
     res.json({
       msg: "Employee added successfully",
