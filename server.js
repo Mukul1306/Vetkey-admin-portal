@@ -37,10 +37,7 @@ const multer = require("multer");
 const storage = multer.memoryStorage(); // ✅ store in memory
 
 const upload = multer({
-  storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024
-  }
+  storage: multer.memoryStorage(),
 });
 
 app.use("/uploads", express.static("uploads"));
@@ -198,26 +195,25 @@ app.post("/login", async (req, res) => {
 const streamifier = require("streamifier");
 
 app.post("/add-employee", upload.any(), async (req, res) => {
-  console.log(req.files);
   try {
     console.log("========= ADD EMPLOYEE =========");
     console.log("BODY:", req.body);
-    console.log("FILE:", req.file);
+    console.log("FILES:", req.files);
 
-    // ✅ check file received
-    if (!req.file) {
+    if (!req.files || req.files.length === 0) {
       return res.status(400).json({
         msg: "No image file received"
       });
     }
 
-    // ✅ upload test
+    const file = req.files[0];
+
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         { folder: "employees" },
         (error, result) => {
           if (error) {
-            console.log("CLOUDINARY REAL ERROR:", error);
+            console.log("CLOUDINARY ERROR:", error);
             reject(error);
           } else {
             resolve(result);
@@ -226,30 +222,27 @@ app.post("/add-employee", upload.any(), async (req, res) => {
       );
 
       streamifier
-        .createReadStream(req.file.buffer)
+        .createReadStream(file.buffer)
         .pipe(stream);
     });
-
-    console.log("UPLOAD SUCCESS:", result.secure_url);
 
     const emp = new Employee({
       ...req.body,
       age: Number(req.body.age),
-      image: result.secure_url
+      image: result.secure_url,
     });
 
     await emp.save();
 
-    return res.json({
-      msg: "Employee added",
-      emp
+    res.json({
+      msg: "Employee added successfully",
+      emp,
     });
 
   } catch (err) {
     console.log("FINAL ERROR:", err);
-
-    return res.status(500).json({
-      msg: err.message || "Upload failed"
+    res.status(500).json({
+      msg: err.message,
     });
   }
 });
