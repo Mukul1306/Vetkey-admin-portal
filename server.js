@@ -231,11 +231,16 @@ app.post("/add-employee", upload.single("image"), async (req, res) => {
     });
 
   } catch (err) {
-    console.log(err);
-    res.status(500).json({
-      msg: err.message,
-    });
-  }
+  console.log("========== ERROR ==========");
+  console.log(err);
+  console.log(err.message);
+  console.log(err.stack);
+
+  return res.status(500).json({
+    message: err.message,
+    stack: err.stack
+  });
+}
 });
 
 
@@ -634,4 +639,8 @@ cron.schedule("0 * * * *", async () => {
   }
 });
 // ================= SERVER =================
-app.listen(5000, () => console.log("Server running on 5000"));
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
+});
