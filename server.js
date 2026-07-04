@@ -36,9 +36,6 @@ const multer = require("multer");
 
 const storage = multer.memoryStorage(); // ✅ store in memory
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-});
 
 app.use("/uploads", express.static("uploads"));
 
@@ -62,13 +59,40 @@ const Employee = mongoose.model("Employee", {
 });
 
 const Client = mongoose.model("Client", {
-  name: String,
-  mobile: String,
-  location: String,
-  employeeId: String,
-  employeeName: String
+  clientId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  firmName: {
+    type: String,
+    required: true
+  },
+  mobile: {
+    type: String,
+    required: true
+  },
+  location: {
+    type: String,
+    required: true
+  },
+  employeeId: {
+    type: String,
+    required: true
+  },
+  employeeName: {
+    type: String,
+    required: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
 });
-
 
 // 💊 PRODUCT MODEL (NEW)
 const Product = mongoose.model("Product", {
@@ -191,7 +215,13 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
+
 // ================= ADD EMPLOYEE =================
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
+
 const streamifier = require("streamifier");
 
 app.post("/add-employee", upload.single("image"), async (req, res) => {
@@ -201,46 +231,52 @@ app.post("/add-employee", upload.single("image"), async (req, res) => {
 
     if (!req.file) {
       return res.status(400).json({
-        msg: "No image file received"
+        msg: "Image not received"
       });
     }
 
+    // Upload image to Cloudinary
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: "employees" },
+        {
+          folder: "employees"
+        },
         (error, result) => {
           if (error) return reject(error);
           resolve(result);
         }
       );
 
-      streamifier.createReadStream(req.file.buffer).pipe(stream);
+      streamifier
+        .createReadStream(req.file.buffer)
+        .pipe(stream);
     });
 
-    const emp = new Employee({
-      ...req.body,
-      age: req.body.age ? Number(req.body.age) : undefined,
-      image: result.secure_url,
+    console.log("Cloudinary URL:", result.secure_url);
+
+    const employee = new Employee({
+      name: req.body.name,
+      empId: req.body.empId,
+      age: Number(req.body.age),
+      mobile: req.body.mobile,
+      location: req.body.location,
+      password: req.body.password,
+      image: result.secure_url
     });
 
-    await emp.save();
+    await employee.save();
 
-    res.json({
-      msg: "Employee added successfully",
-      emp,
+    res.status(201).json({
+      success: true,
+      employee
     });
 
   } catch (err) {
-  console.log("========== ERROR ==========");
-  console.log(err);
-  console.log(err.message);
-  console.log(err.stack);
-
-  return res.status(500).json({
-    message: err.message,
-    stack: err.stack
-  });
-}
+    console.log(err);
+    res.status(500).json({
+      msg: err.message
+    });
+  }
 });
 
 
@@ -520,15 +556,158 @@ app.get("/monthly-sales", async (req, res) => {
 });
 
 app.post("/client", async (req, res) => {
-  const client = new Client(req.body);
-  await client.save();
-  res.json(client);
+  try {
+    const {
+      clientId,
+      name,
+      firmName,
+      mobile,
+      location,
+      employeeId,
+      employeeName
+    } = req.body;
+
+    if (
+      !clientId ||
+      !name ||
+      !firmName ||
+      !mobile ||
+      !location ||
+      !employeeId
+    ) {
+      return res.status(400).json({
+        msg: "Please fill all fields"
+      });
+    }
+
+    const exists = await Client.findOne({
+      clientId: clientId.toUpperCase()
+    });
+
+    if (exists) {
+      return res.status(400).json({
+        msg: "Client ID already exists"
+      });
+    }
+
+    const client = new Client({
+      clientId: clientId.toUpperCase(),
+      name,
+      firmName,
+      mobile,
+      location,
+      employeeId,
+      employeeName
+    });
+
+    await client.save();
+
+    res.json(client);
+
+  } catch (err) {
+    console.log(err);
+
+    res.status(500).json({
+      msg: "Server Error"
+    });
+  }
 });
 
 app.get("/clients", async (req, res) => {
-  const data = await Client.find();
-  res.json(data);
+  try {
+    const clients = await Client.find().sort({
+      createdAt: -1
+    });
+
+    res.json(clients);
+
+  } catch (err) {
+    res.status(500).json({
+      msg: "Error"
+    });
+  }
 });
+
+app.delete("/client/:id", async (req, res) => {
+  try {
+
+    await Client.findByIdAndDelete(req.params.id);
+
+    res.json({
+      msg: "Client Deleted"
+    });
+
+  } catch (err) {
+
+    res.status(500).json({
+      msg: "Delete Error"
+    });
+
+  }
+});
+
+app.put("/client/:id", async (req, res) => {
+  try {
+
+    const updated = await Client.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true
+      }
+    );
+
+    res.json(updated);
+
+  } catch (err) {
+
+    res.status(500).json({
+      msg: "Update Error"
+    });
+
+  }
+});
+
+
+app.get("/client/search/:key", async (req, res) => {
+  try {
+
+    const key = req.params.key;
+
+    const data = await Client.find({
+      $or: [
+        {
+          clientId: {
+            $regex: key,
+            $options: "i"
+          }
+        },
+        {
+          name: {
+            $regex: key,
+            $options: "i"
+          }
+        },
+        {
+          firmName: {
+            $regex: key,
+            $options: "i"
+          }
+        }
+      ]
+    });
+
+    res.json(data);
+
+  } catch (err) {
+
+    res.status(500).json({
+      msg: "Search Error"
+    });
+
+  }
+});
+
 
 app.get("/monthly-sales/filter", async (req, res) => {
   try {
@@ -638,6 +817,43 @@ cron.schedule("0 * * * *", async () => {
     }
   }
 });
+
+app.use((req, res, next) => {
+  console.log("REQUEST:", req.method, req.originalUrl);
+  next();
+});
+
+app.get("/employee-clients/:employeeId", async (req, res) => {
+    try {
+
+        const clients = await Client.find({
+            employeeId: req.params.employeeId
+        }).sort({ name: 1 });
+
+        res.json(clients);
+
+    } catch (err) {
+
+        res.status(500).json({
+            msg: "Error"
+        });
+
+    }
+});
+
+// app.use((err, req, res, next) => {
+//   console.error("GLOBAL ERROR:", err);
+
+//   if (err.name === "MulterError") {
+//     return res.status(400).json({
+//       msg: err.message,
+//     });
+//   }
+
+//   res.status(500).json({
+//     msg: err.message || "Server Error",
+//   });
+// });
 // ================= SERVER =================
 const PORT = process.env.PORT || 5000;
 
